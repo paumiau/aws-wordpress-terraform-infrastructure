@@ -8,15 +8,15 @@
 terraform {
   # Versión mínima de Terraform requerida
   required_version = ">= 1.0"
-  
+
   # Proveedores requeridos y sus versiones
   required_providers {
     aws = {
-      source  = "hashicorp/aws"  # Proveedor oficial de AWS de HashiCorp
-      version = "~> 5.0"          # Versión 5.x (permite actualizaciones menores)
+      source  = "hashicorp/aws" # Proveedor oficial de AWS de HashiCorp
+      version = "~> 5.0"        # Versión 5.x (permite actualizaciones menores)
     }
   }
-  
+
   # Backend configuration (descomentar y configurar para usar estado remoto)
   # backend "s3" {
   #   bucket         = "terraform-state-bucket"

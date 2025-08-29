@@ -9,12 +9,12 @@
 # Documento de política que permite al servicio ECS asumir el rol de ejecución
 data "aws_iam_policy_document" "ecs_task_execution_role" {
   statement {
-    actions = ["sts:AssumeRole"]    # Acción: permitir asumir este rol
+    actions = ["sts:AssumeRole"] # Acción: permitir asumir este rol
 
     # Quién puede asumir este rol
     principals {
-      type        = "Service"                     # Tipo: servicio de AWS
-      identifiers = ["ecs-tasks.amazonaws.com"]  # El servicio ECS puede asumir este rol
+      type        = "Service"                   # Tipo: servicio de AWS
+      identifiers = ["ecs-tasks.amazonaws.com"] # El servicio ECS puede asumir este rol
     }
   }
 }
@@ -49,12 +49,12 @@ resource "aws_iam_role_policy_attachment" "ecs_task_execution_role" {
 # Documento de política que permite al servicio ECS asumir el rol de tarea
 data "aws_iam_policy_document" "ecs_task_role" {
   statement {
-    actions = ["sts:AssumeRole"]    # Acción: permitir asumir este rol
+    actions = ["sts:AssumeRole"] # Acción: permitir asumir este rol
 
     # Quién puede asumir este rol
     principals {
-      type        = "Service"                     # Tipo: servicio de AWS
-      identifiers = ["ecs-tasks.amazonaws.com"]  # El servicio ECS puede asumir este rol
+      type        = "Service"                   # Tipo: servicio de AWS
+      identifiers = ["ecs-tasks.amazonaws.com"] # El servicio ECS puede asumir este rol
     }
   }
 }
@@ -78,20 +78,20 @@ resource "aws_iam_role" "ecs_task_role" {
 # Política personalizada para que los contenedores puedan escribir logs
 data "aws_iam_policy_document" "ecs_task_policy" {
   statement {
-    effect = "Allow"    # Permitir estas acciones
+    effect = "Allow" # Permitir estas acciones
     actions = [
-      "logs:CreateLogGroup",     # Crear grupos de logs
-      "logs:CreateLogStream",    # Crear streams de logs
-      "logs:PutLogEvents"        # Escribir eventos de log
+      "logs:CreateLogGroup",  # Crear grupos de logs
+      "logs:CreateLogStream", # Crear streams de logs
+      "logs:PutLogEvents"     # Escribir eventos de log
     ]
-    resources = ["*"]    # En todos los recursos (se podría restringir más)
+    resources = ["*"] # En todos los recursos (se podría restringir más)
   }
 }
 
 # Adjuntar la política personalizada al rol de tarea
 resource "aws_iam_role_policy" "ecs_task_policy" {
   name   = "${var.environment}-ecs-task-policy"
-  role   = aws_iam_role.ecs_task_role.id                    # Rol al que adjuntar
+  role   = aws_iam_role.ecs_task_role.id                     # Rol al que adjuntar
   policy = data.aws_iam_policy_document.ecs_task_policy.json # Política definida arriba
 }
 # Nota: Esto permite que los contenedores WordPress escriban sus propios logs

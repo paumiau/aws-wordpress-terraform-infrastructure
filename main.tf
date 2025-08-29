@@ -37,14 +37,14 @@ module "vpc" {
 # 2. IAM (Identity and Access Management) - Roles y permisos para servicios de AWS
 # Define qué servicios pueden acceder a qué recursos de forma segura
 module "iam" {
-  source = "./modules/iam"
+  source      = "./modules/iam"
   environment = var.environment # Entorno para nombrar los roles
 }
 
 # 3. RDS (Relational Database Service) - Base de datos MySQL gestionada para WordPress
 # Proporciona una base de datos MySQL con backups automáticos y alta disponibilidad
 module "rds" {
-  source = "./modules/rds"
+  source                 = "./modules/rds"
   environment            = var.environment                    # Entorno para nombrar recursos
   vpc_id                 = module.vpc.vpc_id                  # ID de la VPC donde crear la BD
   private_subnet_ids     = module.vpc.private_subnet_ids      # Subredes privadas para la BD
@@ -58,7 +58,7 @@ module "rds" {
 # 4. ALB (Application Load Balancer) - Balanceador de carga para distribuir tráfico
 # Distribuye el tráfico web entre múltiples contenedores y proporciona alta disponibilidad
 module "alb" {
-  source = "./modules/alb"
+  source                 = "./modules/alb"
   environment            = var.environment                    # Entorno para nombrar recursos
   vpc_id                 = module.vpc.vpc_id                  # ID de la VPC donde crear el ALB
   public_subnet_ids      = module.vpc.public_subnet_ids       # Subredes públicas para recibir tráfico
@@ -68,7 +68,7 @@ module "alb" {
 # 5. ECS (Elastic Container Service) - Servicio de contenedores para ejecutar WordPress
 # Ejecuta WordPress en contenedores Docker con escalado automático
 module "ecs" {
-  source = "./modules/ecs"
+  source              = "./modules/ecs"
   environment         = var.environment                        # Entorno para nombrar recursos
   vpc_id              = module.vpc.vpc_id                      # ID de la VPC
   private_subnet_ids  = module.vpc.private_subnet_ids          # Subredes privadas para contenedores

@@ -13,7 +13,7 @@
 # Grupo de subredes para RDS - Define dónde puede ubicarse la base de datos
 resource "aws_db_subnet_group" "main" {
   name       = "${var.environment}-db-subnet-group"
-  subnet_ids = var.private_subnet_ids    # Solo subredes privadas (no accesible desde internet)
+  subnet_ids = var.private_subnet_ids # Solo subredes privadas (no accesible desde internet)
 
   tags = {
     Name = "${var.environment}-db-subnet-group"
@@ -28,13 +28,13 @@ resource "aws_db_subnet_group" "main" {
 
 # Grupo de parámetros personalizado para MySQL 8.0
 resource "aws_db_parameter_group" "main" {
-  family = "mysql8.0"                               # Familia del motor de BD
+  family = "mysql8.0" # Familia del motor de BD
   name   = "${var.environment}-db-params"
 
   # Configuración personalizada del buffer pool de InnoDB
   parameter {
-    name  = "innodb_buffer_pool_size"                # Parámetro a modificar
-    value = "{DBInstanceClassMemory*3/4}"            # Usar 75% de la memoria para el buffer pool
+    name  = "innodb_buffer_pool_size"     # Parámetro a modificar
+    value = "{DBInstanceClassMemory*3/4}" # Usar 75% de la memoria para el buffer pool
   }
   # Nota: El buffer pool es la memoria caché donde InnoDB almacena datos y índices.
   # Un tamaño mayor mejora el rendimiento al reducir las lecturas de disco.
@@ -53,37 +53,37 @@ resource "aws_db_parameter_group" "main" {
 # Instancia de base de datos MySQL para WordPress
 resource "aws_db_instance" "main" {
   # IDENTIFICACIÓN Y MOTOR
-  identifier     = "${var.environment}-wordpress-db"    # Nombre único de la instancia
-  engine         = "mysql"                              # Motor de base de datos
-  engine_version = "8.0"                                # Versión específica de MySQL
-  instance_class = var.db_instance_class                # Tamaño de la instancia (ej: db.t3.micro)
+  identifier     = "${var.environment}-wordpress-db" # Nombre único de la instancia
+  engine         = "mysql"                           # Motor de base de datos
+  engine_version = "8.0"                             # Versión específica de MySQL
+  instance_class = var.db_instance_class             # Tamaño de la instancia (ej: db.t3.micro)
 
   # CONFIGURACIÓN DE ALMACENAMIENTO
-  allocated_storage     = 20       # Almacenamiento inicial en GB
-  max_allocated_storage = 100      # Máximo almacenamiento con auto-scaling (GB)
-  storage_type          = "gp2"    # Tipo: gp2 (General Purpose SSD), gp3, io1, etc.
-  storage_encrypted     = true     # Cifrar almacenamiento en reposo
+  allocated_storage     = 20    # Almacenamiento inicial en GB
+  max_allocated_storage = 100   # Máximo almacenamiento con auto-scaling (GB)
+  storage_type          = "gp2" # Tipo: gp2 (General Purpose SSD), gp3, io1, etc.
+  storage_encrypted     = true  # Cifrar almacenamiento en reposo
 
   # CREDENCIALES DE ACCESO
-  db_name  = var.db_name       # Nombre de la base de datos inicial
-  username = var.db_username   # Usuario administrador
-  password = var.db_password   # Contraseña del administrador
+  db_name  = var.db_name     # Nombre de la base de datos inicial
+  username = var.db_username # Usuario administrador
+  password = var.db_password # Contraseña del administrador
 
   # CONFIGURACIÓN DE RED Y SEGURIDAD
-  vpc_security_group_ids = var.vpc_security_group_ids    # Grupos de seguridad (firewall)
-  db_subnet_group_name   = aws_db_subnet_group.main.name # Subredes donde puede estar la BD
+  vpc_security_group_ids = var.vpc_security_group_ids       # Grupos de seguridad (firewall)
+  db_subnet_group_name   = aws_db_subnet_group.main.name    # Subredes donde puede estar la BD
   parameter_group_name   = aws_db_parameter_group.main.name # Configuración personalizada
 
   # CONFIGURACIÓN DE BACKUPS Y MANTENIMIENTO
-  backup_retention_period = 7                        # Retener backups por 7 días
-  backup_window          = "03:00-04:00"             # Ventana de backup (UTC): 3-4 AM
-  maintenance_window     = "sun:04:00-sun:05:00"     # Ventana de mantenimiento: domingo 4-5 AM
+  backup_retention_period = 7                     # Retener backups por 7 días
+  backup_window           = "03:00-04:00"         # Ventana de backup (UTC): 3-4 AM
+  maintenance_window      = "sun:04:00-sun:05:00" # Ventana de mantenimiento: domingo 4-5 AM
 
   # CONFIGURACIÓN DE ELIMINACIÓN
   # Configuración condicional basada en el entorno
   skip_final_snapshot = var.environment == "production" ? false : true
   deletion_protection = var.environment == "production" ? true : false
-  
+
   # En producción: skip_final_snapshot = false, deletion_protection = true
   # En desarrollo: skip_final_snapshot = true, deletion_protection = false
 

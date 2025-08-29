@@ -8,7 +8,7 @@
 # Data source para obtener las zonas de disponibilidad disponibles dinámicamente
 data "aws_availability_zones" "available" {
   state = "available"
-  
+
   # Excluir zonas locales y wavelength que no soportan todos los servicios
   filter {
     name   = "opt-in-status"
@@ -24,9 +24,9 @@ locals {
 
 # VPC Principal - La red virtual que contendrá todos nuestros recursos
 resource "aws_vpc" "main" {
-  cidr_block           = var.vpc_cidr        # Rango de direcciones IP (ej: 10.0.0.0/16 = 65,536 IPs)
-  enable_dns_hostnames = true               # Permite usar nombres DNS dentro de la VPC
-  enable_dns_support   = true               # Habilita resolución DNS para servicios AWS
+  cidr_block           = var.vpc_cidr # Rango de direcciones IP (ej: 10.0.0.0/16 = 65,536 IPs)
+  enable_dns_hostnames = true         # Permite usar nombres DNS dentro de la VPC
+  enable_dns_support   = true         # Habilita resolución DNS para servicios AWS
 
   tags = {
     Name = "${var.environment}-vpc"
@@ -42,7 +42,7 @@ resource "aws_vpc" "main" {
 
 # Internet Gateway - Permite acceso a internet desde la VPC
 resource "aws_internet_gateway" "main" {
-  vpc_id = aws_vpc.main.id    # Se asocia a nuestra VPC principal
+  vpc_id = aws_vpc.main.id # Se asocia a nuestra VPC principal
 
   tags = {
     Name = "${var.environment}-igw"
@@ -58,16 +58,16 @@ resource "aws_internet_gateway" "main" {
 
 # Subredes públicas - Una en cada zona de disponibilidad para redundancia
 resource "aws_subnet" "public" {
-  count = length(local.azs)  # Crear una subred por cada zona disponible
+  count = length(local.azs) # Crear una subred por cada zona disponible
 
-  vpc_id                  = aws_vpc.main.id                           # VPC donde crear la subred
-  cidr_block              = cidrsubnet(var.vpc_cidr, 8, count.index)  # Dividir la VPC en subredes /24
-  availability_zone       = local.azs[count.index]                    # Zona de disponibilidad específica
-  map_public_ip_on_launch = true                                      # Auto-asignar IP pública a instancias
+  vpc_id                  = aws_vpc.main.id                          # VPC donde crear la subred
+  cidr_block              = cidrsubnet(var.vpc_cidr, 8, count.index) # Dividir la VPC en subredes /24
+  availability_zone       = local.azs[count.index]                   # Zona de disponibilidad específica
+  map_public_ip_on_launch = true                                     # Auto-asignar IP pública a instancias
 
   tags = {
     Name = "${var.environment}-public-subnet-${count.index + 1}"
-    Type = "public"    # Etiqueta para identificar tipo de subred
+    Type = "public" # Etiqueta para identificar tipo de subred
   }
 }
 
@@ -80,15 +80,15 @@ resource "aws_subnet" "public" {
 
 # Subredes privadas - Una en cada zona de disponibilidad
 resource "aws_subnet" "private" {
-  count = length(local.azs)  # Crear una subred privada por zona
+  count = length(local.azs) # Crear una subred privada por zona
 
-  vpc_id            = aws_vpc.main.id                                # VPC donde crear la subred
-  cidr_block        = cidrsubnet(var.vpc_cidr, 8, count.index + 10)  # Usar rangos IP diferentes (+10)
-  availability_zone = local.azs[count.index]                         # Zona de disponibilidad específica
+  vpc_id            = aws_vpc.main.id                               # VPC donde crear la subred
+  cidr_block        = cidrsubnet(var.vpc_cidr, 8, count.index + 10) # Usar rangos IP diferentes (+10)
+  availability_zone = local.azs[count.index]                        # Zona de disponibilidad específica
 
   tags = {
     Name = "${var.environment}-private-subnet-${count.index + 1}"
-    Type = "private"   # Etiqueta para identificar tipo de subred
+    Type = "private" # Etiqueta para identificar tipo de subred
   }
 }
 
@@ -100,15 +100,15 @@ resource "aws_subnet" "private" {
 
 # Elastic IPs - Una IP estática por NAT Gateway
 resource "aws_eip" "nat" {
-  count = length(local.azs)  # Una EIP por cada zona de disponibilidad
+  count = length(local.azs) # Una EIP por cada zona de disponibilidad
 
-  domain = "vpc"      # Especifica que es para uso en VPC (no EC2 clásico)
+  domain = "vpc" # Especifica que es para uso en VPC (no EC2 clásico)
 
   tags = {
     Name = "${var.environment}-nat-eip-${count.index + 1}"
   }
 
-  depends_on = [aws_internet_gateway.main]  # Debe existir el IGW antes de crear la EIP
+  depends_on = [aws_internet_gateway.main] # Debe existir el IGW antes de crear la EIP
 }
 
 # =============================================================================
@@ -120,16 +120,16 @@ resource "aws_eip" "nat" {
 
 # NAT Gateways - Uno por zona de disponibilidad para redundancia
 resource "aws_nat_gateway" "main" {
-  count = length(local.azs)  # Un NAT Gateway por zona
+  count = length(local.azs) # Un NAT Gateway por zona
 
-  allocation_id = aws_eip.nat[count.index].id      # IP estática asignada
+  allocation_id = aws_eip.nat[count.index].id       # IP estática asignada
   subnet_id     = aws_subnet.public[count.index].id # Se ubica en subred pública
 
   tags = {
     Name = "${var.environment}-nat-gateway-${count.index + 1}"
   }
 
-  depends_on = [aws_internet_gateway.main]  # Requiere que exista el Internet Gateway
+  depends_on = [aws_internet_gateway.main] # Requiere que exista el Internet Gateway
 }
 
 # =============================================================================
@@ -140,12 +140,12 @@ resource "aws_nat_gateway" "main" {
 
 # Tabla de rutas para subredes públicas
 resource "aws_route_table" "public" {
-  vpc_id = aws_vpc.main.id    # Asociada a nuestra VPC
+  vpc_id = aws_vpc.main.id # Asociada a nuestra VPC
 
   # Ruta por defecto: todo el tráfico a internet va por el Internet Gateway
   route {
-    cidr_block = "0.0.0.0/0"                   # Cualquier destino (0.0.0.0/0 = todo internet)
-    gateway_id = aws_internet_gateway.main.id   # Vía Internet Gateway
+    cidr_block = "0.0.0.0/0"                  # Cualquier destino (0.0.0.0/0 = todo internet)
+    gateway_id = aws_internet_gateway.main.id # Vía Internet Gateway
   }
 
   tags = {
@@ -155,13 +155,13 @@ resource "aws_route_table" "public" {
 
 # Tabla de rutas para subredes privadas (una por zona para usar su NAT Gateway local)
 resource "aws_route_table" "private" {
-  count = length(local.azs)  # Una tabla de rutas privada por zona
+  count = length(local.azs) # Una tabla de rutas privada por zona
 
-  vpc_id = aws_vpc.main.id    # Asociada a nuestra VPC
+  vpc_id = aws_vpc.main.id # Asociada a nuestra VPC
 
   # Ruta por defecto: tráfico a internet va por el NAT Gateway correspondiente
   route {
-    cidr_block     = "0.0.0.0/0"                        # Cualquier destino de internet
+    cidr_block     = "0.0.0.0/0"                          # Cualquier destino de internet
     nat_gateway_id = aws_nat_gateway.main[count.index].id # Vía NAT Gateway de la misma zona
   }
 
@@ -178,17 +178,17 @@ resource "aws_route_table" "private" {
 
 # Asociar subredes públicas con la tabla de rutas pública
 resource "aws_route_table_association" "public" {
-  count = length(local.azs)  # Una asociación por subred pública
+  count = length(local.azs) # Una asociación por subred pública
 
-  subnet_id      = aws_subnet.public[count.index].id  # Subred pública específica
-  route_table_id = aws_route_table.public.id          # Tabla de rutas pública (compartida)
+  subnet_id      = aws_subnet.public[count.index].id # Subred pública específica
+  route_table_id = aws_route_table.public.id         # Tabla de rutas pública (compartida)
 }
 
 # Asociar subredes privadas con sus tablas de rutas privadas correspondientes
 resource "aws_route_table_association" "private" {
-  count = length(local.azs)  # Una asociación por subred privada
+  count = length(local.azs) # Una asociación por subred privada
 
-  subnet_id      = aws_subnet.private[count.index].id    # Subred privada específica
+  subnet_id      = aws_subnet.private[count.index].id      # Subred privada específica
   route_table_id = aws_route_table.private[count.index].id # Su tabla de rutas privada correspondiente
 }
 
@@ -204,34 +204,34 @@ resource "aws_route_table_association" "private" {
 resource "aws_security_group" "alb" {
   name        = "${var.environment}-alb-sg"
   description = "Security group for ALB"
-  vpc_id      = aws_vpc.main.id    # Asociado a nuestra VPC
+  vpc_id      = aws_vpc.main.id # Asociado a nuestra VPC
 
   # REGLAS DE ENTRADA (INGRESS) - Qué tráfico puede entrar al ALB
-  
+
   # Permitir tráfico HTTP desde cualquier lugar de internet
   ingress {
-    from_port   = 80              # Puerto 80 (HTTP)
-    to_port     = 80              # Puerto 80 (HTTP)
-    protocol    = "tcp"           # Protocolo TCP
-    cidr_blocks = ["0.0.0.0/0"]   # Desde cualquier IP de internet
+    from_port   = 80            # Puerto 80 (HTTP)
+    to_port     = 80            # Puerto 80 (HTTP)
+    protocol    = "tcp"         # Protocolo TCP
+    cidr_blocks = ["0.0.0.0/0"] # Desde cualquier IP de internet
   }
 
   # Permitir tráfico HTTPS desde cualquier lugar de internet
   ingress {
-    from_port   = 443            # Puerto 443 (HTTPS)
-    to_port     = 443            # Puerto 443 (HTTPS)
-    protocol    = "tcp"          # Protocolo TCP
-    cidr_blocks = ["0.0.0.0/0"]  # Desde cualquier IP de internet
+    from_port   = 443           # Puerto 443 (HTTPS)
+    to_port     = 443           # Puerto 443 (HTTPS)
+    protocol    = "tcp"         # Protocolo TCP
+    cidr_blocks = ["0.0.0.0/0"] # Desde cualquier IP de internet
   }
 
   # REGLAS DE SALIDA (EGRESS) - Qué tráfico puede salir del ALB
-  
+
   # Permitir todo el tráfico de salida (necesario para comunicarse con contenedores)
   egress {
-    from_port   = 0              # Desde puerto 0 (todos)
-    to_port     = 0              # Hasta puerto 0 (todos)
-    protocol    = "-1"            # Todos los protocolos (-1 = all)
-    cidr_blocks = ["0.0.0.0/0"]  # Hacia cualquier destino
+    from_port   = 0             # Desde puerto 0 (todos)
+    to_port     = 0             # Hasta puerto 0 (todos)
+    protocol    = "-1"          # Todos los protocolos (-1 = all)
+    cidr_blocks = ["0.0.0.0/0"] # Hacia cualquier destino
   }
 
   tags = {
@@ -243,28 +243,28 @@ resource "aws_security_group" "alb" {
 resource "aws_security_group" "ecs" {
   name        = "${var.environment}-ecs-sg"
   description = "Security group for ECS tasks"
-  vpc_id      = aws_vpc.main.id    # Asociado a nuestra VPC
+  vpc_id      = aws_vpc.main.id # Asociado a nuestra VPC
 
   # REGLAS DE ENTRADA - Solo permitir tráfico desde el ALB
-  
+
   # Permitir tráfico HTTP solo desde el Application Load Balancer
   ingress {
-    from_port       = 80                        # Puerto 80 (HTTP)
-    to_port         = 80                        # Puerto 80 (HTTP)
-    protocol        = "tcp"                     # Protocolo TCP
+    from_port       = 80                          # Puerto 80 (HTTP)
+    to_port         = 80                          # Puerto 80 (HTTP)
+    protocol        = "tcp"                       # Protocolo TCP
     security_groups = [aws_security_group.alb.id] # Solo desde el grupo de seguridad del ALB
   }
   # Nota: Esta configuración hace que solo el ALB pueda comunicarse con los contenedores,
   # no hay acceso directo desde internet. Es una práctica de seguridad muy buena.
 
   # REGLAS DE SALIDA - Permitir todo para descargas y conexiones a BD
-  
+
   # Permitir todo el tráfico de salida (para conectarse a RDS, descargar actualizaciones, etc.)
   egress {
-    from_port   = 0              # Desde puerto 0 (todos)
-    to_port     = 0              # Hasta puerto 0 (todos)
-    protocol    = "-1"            # Todos los protocolos
-    cidr_blocks = ["0.0.0.0/0"]  # Hacia cualquier destino
+    from_port   = 0             # Desde puerto 0 (todos)
+    to_port     = 0             # Hasta puerto 0 (todos)
+    protocol    = "-1"          # Todos los protocolos
+    cidr_blocks = ["0.0.0.0/0"] # Hacia cualquier destino
   }
 
   tags = {
@@ -276,28 +276,28 @@ resource "aws_security_group" "ecs" {
 resource "aws_security_group" "rds" {
   name        = "${var.environment}-rds-sg"
   description = "Security group for RDS"
-  vpc_id      = aws_vpc.main.id    # Asociado a nuestra VPC
+  vpc_id      = aws_vpc.main.id # Asociado a nuestra VPC
 
   # REGLAS DE ENTRADA - Solo permitir conexiones desde contenedores ECS
-  
+
   # Permitir conexiones MySQL solo desde los contenedores ECS
   ingress {
-    from_port       = 3306                      # Puerto 3306 (MySQL/MariaDB)
-    to_port         = 3306                      # Puerto 3306 (MySQL/MariaDB)
-    protocol        = "tcp"                     # Protocolo TCP
+    from_port       = 3306                        # Puerto 3306 (MySQL/MariaDB)
+    to_port         = 3306                        # Puerto 3306 (MySQL/MariaDB)
+    protocol        = "tcp"                       # Protocolo TCP
     security_groups = [aws_security_group.ecs.id] # Solo desde contenedores ECS
   }
   # Nota: La base de datos solo acepta conexiones desde los contenedores WordPress,
   # nunca directamente desde internet. Esto es una práctica de seguridad fundamental.
 
   # REGLAS DE SALIDA - Normalmente no necesita salir, pero se permite por si acaso
-  
+
   # Permitir tráfico de salida (generalmente no necesario para RDS)
   egress {
-    from_port   = 0              # Desde puerto 0 (todos)
-    to_port     = 0              # Hasta puerto 0 (todos)
-    protocol    = "-1"            # Todos los protocolos
-    cidr_blocks = ["0.0.0.0/0"]  # Hacia cualquier destino
+    from_port   = 0             # Desde puerto 0 (todos)
+    to_port     = 0             # Hasta puerto 0 (todos)
+    protocol    = "-1"          # Todos los protocolos
+    cidr_blocks = ["0.0.0.0/0"] # Hacia cualquier destino
   }
 
   tags = {

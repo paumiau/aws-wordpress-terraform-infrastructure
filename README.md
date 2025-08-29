@@ -16,8 +16,6 @@ This project deploys a scalable WordPress infrastructure on AWS using Terraform 
 ├── main.tf                    # Root module
 ├── variables.tf               # Root variables
 ├── outputs.tf                 # Root outputs
-├── scripts/                   # Helper scripts
-│   └── init-environment.sh    # Environment initialization script
 ├── modules/                   # Terraform modules
 │   ├── vpc/                   # VPC, subnets, security groups
 │   ├── iam/                   # IAM roles and policies
@@ -47,16 +45,6 @@ This project deploys a scalable WordPress infrastructure on AWS using Terraform 
 - Docker (optional, for local testing)
 
 ## Quick Start
-
-### Using the initialization script
-
-```bash
-# Initialize development environment
-./scripts/init-environment.sh development
-
-# Initialize production environment
-./scripts/init-environment.sh production
-```
 
 ### Manual Setup
 

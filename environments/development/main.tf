@@ -24,13 +24,13 @@ module "wordpress_infrastructure" {
   aws_region         = "us-east-1"
   vpc_cidr           = "10.0.0.0/16"
   availability_zones = ["us-east-1a", "us-east-1b"]
-  
+
   # Configuración de base de datos
   db_instance_class = "db.t3.micro"
   db_name           = "wordpress"
   db_username       = "admin"
-  db_password       = var.db_password  # Esta sí necesita ser variable por seguridad
-  
+  db_password       = var.db_password # Esta sí necesita ser variable por seguridad
+
   # Configuración de WordPress/ECS
   wordpress_image   = "wordpress:latest"
   ecs_desired_count = 1
