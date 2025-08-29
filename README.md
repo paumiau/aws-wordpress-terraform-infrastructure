@@ -16,6 +16,8 @@ This project deploys a scalable WordPress infrastructure on AWS using Terraform 
 ├── main.tf                    # Root module
 ├── variables.tf               # Root variables
 ├── outputs.tf                 # Root outputs
+├── scripts/                   # Helper scripts
+│   └── init-environment.sh    # Environment initialization script
 ├── modules/                   # Terraform modules
 │   ├── vpc/                   # VPC, subnets, security groups
 │   ├── iam/                   # IAM roles and policies
@@ -24,7 +26,17 @@ This project deploys a scalable WordPress infrastructure on AWS using Terraform 
 │   └── ecs/                   # ECS cluster and service
 └── environments/              # Environment configurations
     ├── development/           # Development environment
-    └── production/            # Production environment
+    │   ├── main.tf           # Module call
+    │   ├── variables.tf      # Variable declarations
+    │   ├── outputs.tf        # Output values
+    │   ├── terraform.tfvars  # Variable values
+    │   └── .env.example      # Environment variables example
+    └── production/           # Production environment
+        ├── main.tf           # Module call
+        ├── variables.tf      # Variable declarations
+        ├── outputs.tf        # Output values
+        ├── terraform.tfvars  # Variable values
+        └── .env.example      # Environment variables example
 ```
 
 ## Prerequisites
@@ -32,10 +44,23 @@ This project deploys a scalable WordPress infrastructure on AWS using Terraform 
 - AWS CLI configured with appropriate credentials
 - Terraform >= 1.0 installed
 - Access to AWS account with necessary permissions
+- Docker (optional, for local testing)
 
-## Environment Setup
+## Quick Start
 
-### Development Environment
+### Using the initialization script
+
+```bash
+# Initialize development environment
+./scripts/init-environment.sh development
+
+# Initialize production environment
+./scripts/init-environment.sh production
+```
+
+### Manual Setup
+
+#### Development Environment
 
 1. Navigate to the development environment:
    ```bash
@@ -49,7 +74,8 @@ This project deploys a scalable WordPress infrastructure on AWS using Terraform 
 
 3. Set your database password in `.env`:
    ```bash
-   echo "TF_VAR_db_password=your_secure_password" > .env
+   # Edit .env file and set:
+   # TF_VAR_db_password=your_secure_password
    ```
 
 4. Load environment variables:
@@ -64,7 +90,7 @@ This project deploys a scalable WordPress infrastructure on AWS using Terraform 
    terraform apply
    ```
 
-### Production Environment
+#### Production Environment
 
 1. Navigate to the production environment:
    ```bash
@@ -78,7 +104,7 @@ This project deploys a scalable WordPress infrastructure on AWS using Terraform 
 ### Environment Variables
 
 Set the following environment variable for database password:
-- `TF_VAR_db_password`: Database password for MySQL
+- `TF_VAR_db_password`: Database password for MySQL (required)
 
 ### Environment Differences
 
@@ -94,9 +120,15 @@ Set the following environment variable for database password:
 - 512 CPU / 1024 MB memory
 - VPC CIDR: 10.1.0.0/16
 
-## Deployment Commands
+## Common Terraform Commands
 
 ```bash
+# Format Terraform files
+terraform fmt -recursive
+
+# Validate configuration
+terraform validate
+
 # Initialize Terraform
 terraform init
 
@@ -105,6 +137,15 @@ terraform plan
 
 # Apply changes
 terraform apply
+
+# Apply without confirmation prompt
+terraform apply -auto-approve
+
+# Show current state
+terraform show
+
+# List resources
+terraform state list
 
 # Destroy infrastructure
 terraform destroy
@@ -117,21 +158,75 @@ After deployment, get the load balancer DNS name:
 terraform output wordpress_url
 ```
 
+Visit the URL in your browser to complete WordPress installation.
+
 ## Security Features
 
 - WordPress containers in private subnets
-- RDS database in private subnets
+- RDS database in private subnets with no public access
 - Security groups with minimal required access
-- IAM roles with least privilege principle
+- IAM roles following least privilege principle
 - Encrypted RDS storage
+- Sensitive variables marked with `sensitive = true`
 
 ## Monitoring
 
-- CloudWatch logs for ECS containers
+- CloudWatch logs for ECS containers at `/ecs/{environment}-wordpress`
 - Container insights enabled for ECS cluster
+- 14-day log retention
 
 ## Cost Optimization
 
 - Fargate Spot capacity provider configured
-- Auto-scaling RDS storage
+- Auto-scaling RDS storage (20GB to 100GB)
 - Appropriate instance sizes for each environment
+- NAT Gateways in each AZ (can be reduced to 1 for cost savings)
+
+## Local Development
+
+For local WordPress development:
+```bash
+cd environments/local
+docker-compose up -d
+```
+
+Access WordPress at http://localhost:8000
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Database connection errors**
+   - Verify security groups allow traffic from ECS to RDS
+   - Check database credentials in environment variables
+   - Ensure RDS instance is in `available` state
+
+2. **ECS tasks failing to start**
+   - Check CloudWatch logs for the ECS service
+   - Verify IAM roles have correct permissions
+   - Ensure Docker image is accessible
+
+3. **ALB health checks failing**
+   - Verify WordPress is responding on port 80
+   - Check security group rules
+   - Review target group health check settings
+
+## Best Practices
+
+1. **State Management**: Use remote state backend (S3 + DynamoDB) for team collaboration
+2. **Secrets**: Use AWS Secrets Manager or Parameter Store for production secrets
+3. **Monitoring**: Set up CloudWatch alarms for critical metrics
+4. **Backups**: Enable automated RDS backups with appropriate retention
+5. **Updates**: Regularly update Terraform providers and modules
+
+## Contributing
+
+1. Create a feature branch
+2. Make changes following Terraform best practices
+3. Run `terraform fmt` and `terraform validate`
+4. Test in development environment first
+5. Submit pull request
+
+## License
+
+This project is licensed under the MIT License.

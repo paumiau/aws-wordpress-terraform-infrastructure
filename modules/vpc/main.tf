@@ -5,6 +5,23 @@
 # y de otros clientes de AWS. Es como tener tu propio centro de datos virtual.
 # =============================================================================
 
+# Data source para obtener las zonas de disponibilidad disponibles dinámicamente
+data "aws_availability_zones" "available" {
+  state = "available"
+  
+  # Excluir zonas locales y wavelength que no soportan todos los servicios
+  filter {
+    name   = "opt-in-status"
+    values = ["opt-in-not-required"]
+  }
+}
+
+# Usar las zonas proporcionadas o las disponibles dinámicamente
+locals {
+  # Si se proporcionan zonas específicas, usarlas; si no, usar las primeras disponibles
+  azs = length(var.availability_zones) > 0 ? var.availability_zones : slice(data.aws_availability_zones.available.names, 0, min(3, length(data.aws_availability_zones.available.names)))
+}
+
 # VPC Principal - La red virtual que contendrá todos nuestros recursos
 resource "aws_vpc" "main" {
   cidr_block           = var.vpc_cidr        # Rango de direcciones IP (ej: 10.0.0.0/16 = 65,536 IPs)
@@ -41,12 +58,12 @@ resource "aws_internet_gateway" "main" {
 
 # Subredes públicas - Una en cada zona de disponibilidad para redundancia
 resource "aws_subnet" "public" {
-  count = length(var.availability_zones)  # Crear una subred por cada zona disponible
+  count = length(local.azs)  # Crear una subred por cada zona disponible
 
-  vpc_id                  = aws_vpc.main.id                                    # VPC donde crear la subred
-  cidr_block              = cidrsubnet(var.vpc_cidr, 8, count.index)         # Dividir la VPC en subredes /24
-  availability_zone       = var.availability_zones[count.index]               # Zona de disponibilidad específica
-  map_public_ip_on_launch = true                                             # Auto-asignar IP pública a instancias
+  vpc_id                  = aws_vpc.main.id                           # VPC donde crear la subred
+  cidr_block              = cidrsubnet(var.vpc_cidr, 8, count.index)  # Dividir la VPC en subredes /24
+  availability_zone       = local.azs[count.index]                    # Zona de disponibilidad específica
+  map_public_ip_on_launch = true                                      # Auto-asignar IP pública a instancias
 
   tags = {
     Name = "${var.environment}-public-subnet-${count.index + 1}"
@@ -63,11 +80,11 @@ resource "aws_subnet" "public" {
 
 # Subredes privadas - Una en cada zona de disponibilidad
 resource "aws_subnet" "private" {
-  count = length(var.availability_zones)  # Crear una subred privada por zona
+  count = length(local.azs)  # Crear una subred privada por zona
 
-  vpc_id            = aws_vpc.main.id                                    # VPC donde crear la subred
-  cidr_block        = cidrsubnet(var.vpc_cidr, 8, count.index + 10)    # Usar rangos IP diferentes (+10)
-  availability_zone = var.availability_zones[count.index]               # Zona de disponibilidad específica
+  vpc_id            = aws_vpc.main.id                                # VPC donde crear la subred
+  cidr_block        = cidrsubnet(var.vpc_cidr, 8, count.index + 10)  # Usar rangos IP diferentes (+10)
+  availability_zone = local.azs[count.index]                         # Zona de disponibilidad específica
 
   tags = {
     Name = "${var.environment}-private-subnet-${count.index + 1}"
@@ -83,7 +100,7 @@ resource "aws_subnet" "private" {
 
 # Elastic IPs - Una IP estática por NAT Gateway
 resource "aws_eip" "nat" {
-  count = length(var.availability_zones)  # Una EIP por cada zona de disponibilidad
+  count = length(local.azs)  # Una EIP por cada zona de disponibilidad
 
   domain = "vpc"      # Especifica que es para uso en VPC (no EC2 clásico)
 
@@ -103,7 +120,7 @@ resource "aws_eip" "nat" {
 
 # NAT Gateways - Uno por zona de disponibilidad para redundancia
 resource "aws_nat_gateway" "main" {
-  count = length(var.availability_zones)  # Un NAT Gateway por zona
+  count = length(local.azs)  # Un NAT Gateway por zona
 
   allocation_id = aws_eip.nat[count.index].id      # IP estática asignada
   subnet_id     = aws_subnet.public[count.index].id # Se ubica en subred pública
@@ -138,7 +155,7 @@ resource "aws_route_table" "public" {
 
 # Tabla de rutas para subredes privadas (una por zona para usar su NAT Gateway local)
 resource "aws_route_table" "private" {
-  count = length(var.availability_zones)  # Una tabla de rutas privada por zona
+  count = length(local.azs)  # Una tabla de rutas privada por zona
 
   vpc_id = aws_vpc.main.id    # Asociada a nuestra VPC
 
@@ -161,7 +178,7 @@ resource "aws_route_table" "private" {
 
 # Asociar subredes públicas con la tabla de rutas pública
 resource "aws_route_table_association" "public" {
-  count = length(var.availability_zones)  # Una asociación por subred pública
+  count = length(local.azs)  # Una asociación por subred pública
 
   subnet_id      = aws_subnet.public[count.index].id  # Subred pública específica
   route_table_id = aws_route_table.public.id          # Tabla de rutas pública (compartida)
@@ -169,7 +186,7 @@ resource "aws_route_table_association" "public" {
 
 # Asociar subredes privadas con sus tablas de rutas privadas correspondientes
 resource "aws_route_table_association" "private" {
-  count = length(var.availability_zones)  # Una asociación por subred privada
+  count = length(local.azs)  # Una asociación por subred privada
 
   subnet_id      = aws_subnet.private[count.index].id    # Subred privada específica
   route_table_id = aws_route_table.private[count.index].id # Su tabla de rutas privada correspondiente

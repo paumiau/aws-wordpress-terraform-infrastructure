@@ -80,12 +80,12 @@ resource "aws_db_instance" "main" {
   maintenance_window     = "sun:04:00-sun:05:00"     # Ventana de mantenimiento: domingo 4-5 AM
 
   # CONFIGURACIÓN DE ELIMINACIÓN
-  skip_final_snapshot = true     # No crear snapshot final al eliminar (para desarrollo)
-  deletion_protection = false    # Permitir eliminación (para desarrollo)
+  # Configuración condicional basada en el entorno
+  skip_final_snapshot = var.environment == "production" ? false : true
+  deletion_protection = var.environment == "production" ? true : false
   
-  # NOTA IMPORTANTE: En producción cambiar a:
-  # skip_final_snapshot = false
-  # deletion_protection = true
+  # En producción: skip_final_snapshot = false, deletion_protection = true
+  # En desarrollo: skip_final_snapshot = true, deletion_protection = false
 
   tags = {
     Name = "${var.environment}-wordpress-db"

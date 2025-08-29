@@ -4,17 +4,7 @@
 # Este archivo orquesta todos los servicios necesarios para desplegar WordPress
 # en AWS usando una arquitectura de alta disponibilidad con contenedores
 # =============================================================================
-
-# Configuración de Terraform: define qué versiones de Terraform y proveedores usar
-terraform {
-  required_version = ">= 1.0" # Versión mínima de Terraform requerida
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws" # Proveedor oficial de AWS de HashiCorp
-      version = "~> 5.0"        # Versión 5.x del proveedor AWS (permite actualizaciones menores)
-    }
-  }
-}
+# NOTA: La configuración de Terraform y versiones está en terraform.tf
 
 # Configuración del proveedor de AWS: especifica región y etiquetas por defecto
 provider "aws" {
@@ -48,7 +38,6 @@ module "vpc" {
 # Define qué servicios pueden acceder a qué recursos de forma segura
 module "iam" {
   source = "./modules/iam"
-
   environment = var.environment # Entorno para nombrar los roles
 }
 
@@ -56,7 +45,6 @@ module "iam" {
 # Proporciona una base de datos MySQL con backups automáticos y alta disponibilidad
 module "rds" {
   source = "./modules/rds"
-
   environment            = var.environment                    # Entorno para nombrar recursos
   vpc_id                 = module.vpc.vpc_id                  # ID de la VPC donde crear la BD
   private_subnet_ids     = module.vpc.private_subnet_ids      # Subredes privadas para la BD
@@ -71,7 +59,6 @@ module "rds" {
 # Distribuye el tráfico web entre múltiples contenedores y proporciona alta disponibilidad
 module "alb" {
   source = "./modules/alb"
-
   environment            = var.environment                    # Entorno para nombrar recursos
   vpc_id                 = module.vpc.vpc_id                  # ID de la VPC donde crear el ALB
   public_subnet_ids      = module.vpc.public_subnet_ids       # Subredes públicas para recibir tráfico
@@ -82,7 +69,6 @@ module "alb" {
 # Ejecuta WordPress en contenedores Docker con escalado automático
 module "ecs" {
   source = "./modules/ecs"
-
   environment         = var.environment                        # Entorno para nombrar recursos
   vpc_id              = module.vpc.vpc_id                      # ID de la VPC
   private_subnet_ids  = module.vpc.private_subnet_ids          # Subredes privadas para contenedores
