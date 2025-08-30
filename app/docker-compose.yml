@@ -1,6 +1,9 @@
 services:
   wordpress:
-    build: ../../
+    # Construye la imagen usando el Dockerfile en el directorio raíz del proyecto
+    build:
+      context: .
+      dockerfile: Dockerfile
     ports:
       - "8000:80"
     environment:
@@ -9,7 +12,9 @@ services:
       WORDPRESS_DB_PASSWORD: ${db_password}
       WORDPRESS_DB_NAME: wordpress
     volumes:
-      - wordpress_data:/var/www/html
+      # Montamos el contenido para ver cambios en tiempo real,
+      # pero la imagen ya los tiene "cocinados" para despliegue.
+      - ./src/plugins:/var/www/html/wp-content/plugins
     depends_on:
       - mysql
   mysql:
@@ -19,6 +24,6 @@ services:
       MYSQL_DATABASE: wordpress
     volumes:
       - mysql_data:/var/lib/mysql
+
 volumes:
   mysql_data:
-  wordpress_data:

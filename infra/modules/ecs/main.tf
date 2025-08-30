@@ -107,7 +107,7 @@ resource "aws_ecs_task_definition" "main" {
           value = var.db_username
         },
         {
-          name  = "WORDPRESS_DB_PASSWORD" # Contraseña para la BD
+          name  = "WORDPRESS_db_password" # Contraseña para la BD
           value = var.db_password
         }
       ]
