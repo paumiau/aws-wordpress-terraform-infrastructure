@@ -1,0 +1,255 @@
+name: Security Scanning
+
+# Escaneo de seguridad programado y en PRs
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+  schedule:
+    # Ejecutar todos los lunes a las 9 AM UTC
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  # Job 1: Análisis de código estático
+  code-analysis:
+    name: Static Code Analysis
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for better analysis
+
+      # Análisis de secretos con Gitleaks
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Análisis de dependencias PHP con Composer Audit (si usas Composer)
+      - name: Check for vulnerable dependencies
+        continue-on-error: true
+        run: |
+          if [ -f "app/composer.lock" ]; then
+            docker run --rm -v "$PWD/app:/app" composer:latest audit
+          else
+            echo "No composer.lock found, skipping PHP dependency check"
+          fi
+
+      # Análisis SAST con Semgrep
+      - name: Run Semgrep
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: >-
+            p/security-audit
+            p/owasp-top-ten
+            p/wordpress
+            p/php
+          generateSarif: true
+
+      - name: Upload Semgrep results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: semgrep.sarif
+
+  # Job 2: Análisis de infraestructura como código
+  iac-security:
+    name: Infrastructure Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Escaneo de Terraform con Checkov
+      - name: Run Checkov
+        id: checkov
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: infra/
+          quiet: false
+          soft_fail: true
+          framework: terraform
+          output_format: sarif
+          output_file_path: checkov-results.sarif
+          skip_check: CKV_AWS_88,CKV_AWS_79  # Skip checks específicos si es necesario
+
+      - name: Upload Checkov results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: checkov-results.sarif
+
+      # Análisis con Terrascan
+      - name: Run Terrascan
+        continue-on-error: true
+        run: |
+          docker run --rm -v "$PWD/infra:/src" \
+            tenable/terrascan scan -t aws -i terraform -d /src
+
+      # Validación de Terraform
+      - name: Terraform fmt check
+        run: |
+          docker run --rm -v "$PWD/infra:/workspace" \
+            hashicorp/terraform:latest fmt -check=true -recursive /workspace
+
+  # Job 3: Análisis de contenedores
+  container-security:
+    name: Container Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Build de la imagen para análisis
+      - name: Build Docker image for scanning
+        uses: docker/build-push-action@v5
+        with:
+          context: ./app
+          file: ./app/Dockerfile
+          push: false
+          tags: wordpress:security-scan
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Escaneo con Trivy (completo)
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: wordpress:security-scan
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH,MEDIUM'
+          vuln-type: 'os,library'
+
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+      # Escaneo con Snyk
+      - name: Run Snyk to check Docker image for vulnerabilities
+        continue-on-error: true
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        run: |
+          if [ -n "$SNYK_TOKEN" ]; then
+            docker run --rm -e SNYK_TOKEN \
+              -v /var/run/docker.sock:/var/run/docker.sock \
+              -v "$PWD:/project" \
+              snyk/snyk:docker test wordpress:security-scan \
+              --severity-threshold=high
+          else
+            echo "Snyk token not configured, skipping Snyk scan"
+          fi
+
+      # Análisis de mejores prácticas con Dockle
+      - name: Run Dockle
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            goodwithtech/dockle:latest \
+            --exit-code 0 \
+            --exit-level warn \
+            wordpress:security-scan
+
+  # Job 4: Análisis de cumplimiento
+  compliance-check:
+    name: Compliance and Best Practices
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Verificación de licencias
+      - name: License check
+        uses: fossas/fossa-action@main
+        continue-on-error: true
+        with:
+          api-key: ${{ secrets.FOSSA_API_KEY }}
+
+      # Verificación de archivos sensibles
+      - name: Check for sensitive files
+        run: |
+          echo "Checking for sensitive files that shouldn't be committed..."
+          
+          # Lista de archivos que no deberían existir
+          sensitive_files=(
+            ".env"
+            "*.pem"
+            "*.key"
+            "*.p12"
+            "*_rsa"
+            "*_dsa"
+            "*.der"
+            "*.pfx"
+            "wp-config.php"
+            "terraform.tfvars"
+            "*.tfstate"
+            "*.tfstate.backup"
+          )
+          
+          found_files=false
+          for pattern in "${sensitive_files[@]}"; do
+            if find . -name "$pattern" -not -path "./.git/*" | grep -q .; then
+              echo "⚠️ Found potentially sensitive file matching pattern: $pattern"
+              find . -name "$pattern" -not -path "./.git/*"
+              found_files=true
+            fi
+          done
+          
+          if [ "$found_files" = true ]; then
+            echo "❌ Sensitive files detected! Please review and remove them."
+            exit 1
+          else
+            echo "✅ No sensitive files detected"
+          fi
+
+  # Job 5: Generación de reporte de seguridad
+  security-report:
+    name: Generate Security Report
+    runs-on: ubuntu-latest
+    needs: [code-analysis, iac-security, container-security, compliance-check]
+    if: always()
+    
+    steps:
+      - name: Generate summary
+        run: |
+          echo "# 🔒 Security Scan Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Date:** $(date)" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Triggered by:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          echo "## Scan Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Check job statuses
+          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Code Analysis | ${{ needs.code-analysis.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Infrastructure Security | ${{ needs.iac-security.result == 'success' && '✅ Passed' || '⚠️ Issues Found' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Container Security | ${{ needs.container-security.result == 'success' && '✅ Passed' || '⚠️ Vulnerabilities Found' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Compliance Check | ${{ needs.compliance-check.result == 'success' && '✅ Compliant' || '⚠️ Review Required' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          echo "## Recommendations" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "1. Review all security findings in the Security tab" >> $GITHUB_STEP_SUMMARY
+          echo "2. Address any HIGH or CRITICAL vulnerabilities before deployment" >> $GITHUB_STEP_SUMMARY
+          echo "3. Ensure all sensitive data is properly encrypted" >> $GITHUB_STEP_SUMMARY
+          echo "4. Keep all dependencies up to date" >> $GITHUB_STEP_SUMMARY

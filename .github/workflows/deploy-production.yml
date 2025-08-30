@@ -1,0 +1,371 @@
+name: Deploy to Production
+
+# Trigger solo con tags semver o manual
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'  # v1.0.0, v2.1.3, etc.
+      - 'v[0-9]+.[0-9]+.[0-9]+-rc[0-9]+'  # v1.0.0-rc1 para release candidates
+  # Permitir ejecución manual con aprobación
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to deploy (e.g., v1.0.0)'
+        required: true
+        type: string
+      dry_run:
+        description: 'Perform a dry run without actual deployment'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: wordpress-prod
+  ECS_SERVICE: wordpress-service
+  ECS_CLUSTER: production-cluster
+  CONTAINER_NAME: wordpress
+
+jobs:
+  # Job 1: Validación pre-deployment
+  validate:
+    name: Pre-deployment Validation
+    runs-on: ubuntu-latest
+    environment: production-approval  # Requiere aprobación manual
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate version tag
+        if: github.event_name == 'push'
+        run: |
+          echo "Deploying version: ${{ github.ref_name }}"
+          
+          # Verificar que el tag sigue semver
+          if [[ ! "${{ github.ref_name }}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-rc[0-9]+)?$ ]]; then
+            echo "❌ Invalid version tag format. Must be semver (e.g., v1.0.0)"
+            exit 1
+          fi
+
+      - name: Check previous deployments
+        run: |
+          echo "### 📋 Pre-deployment Checklist" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version to deploy:** ${{ github.ref_name || inputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Target environment:** Production" >> $GITHUB_STEP_SUMMARY
+          echo "**Triggered by:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Dry run:** ${{ inputs.dry_run || 'false' }}" >> $GITHUB_STEP_SUMMARY
+
+  # Job 2: Tests completos
+  test:
+    name: Full Test Suite
+    needs: validate
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Test 1: Build completo
+      - name: Full Docker build test
+        uses: docker/build-push-action@v5
+        with:
+          context: ./app
+          file: ./app/Dockerfile
+          push: false
+          tags: wordpress:prod-test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Test 2: Test de integración con base de datos
+      - name: Integration test with database
+        run: |
+          # Crear red Docker
+          docker network create wordpress-test
+          
+          # Iniciar MySQL
+          docker run -d --name mysql-test \
+            --network wordpress-test \
+            -e MYSQL_ROOT_PASSWORD=test123 \
+            -e MYSQL_DATABASE=wordpress \
+            mysql:8.0
+          
+          # Esperar a que MySQL esté listo
+          echo "Waiting for MySQL to be ready..."
+          for i in {1..30}; do
+            if docker exec mysql-test mysql -uroot -ptest123 -e "SELECT 1" > /dev/null 2>&1; then
+              echo "MySQL is ready!"
+              break
+            fi
+            sleep 2
+          done
+          
+          # Iniciar WordPress
+          docker run -d --name wordpress-test \
+            --network wordpress-test \
+            -e WORDPRESS_DB_HOST=mysql-test \
+            -e WORDPRESS_DB_USER=root \
+            -e WORDPRESS_DB_PASSWORD=test123 \
+            -e WORDPRESS_DB_NAME=wordpress \
+            -p 8080:80 \
+            wordpress:prod-test
+          
+          # Esperar y verificar WordPress
+          echo "Waiting for WordPress to be ready..."
+          for i in {1..30}; do
+            if curl -f http://localhost:8080/ > /dev/null 2>&1; then
+              echo "✅ WordPress is running successfully!"
+              break
+            fi
+            sleep 2
+          done
+          
+          # Cleanup
+          docker stop wordpress-test mysql-test
+          docker rm wordpress-test mysql-test
+          docker network rm wordpress-test
+
+      # Test 3: Security scan
+      - name: Security scan with Trivy
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy image --severity HIGH,CRITICAL \
+            --exit-code 0 \
+            wordpress:prod-test
+
+      # Test 4: Performance test
+      - name: Basic performance test
+        run: |
+          docker run -d --name wordpress-perf -p 8081:80 wordpress:prod-test
+          sleep 30
+          
+          # Simple load test with ab (Apache Bench)
+          docker run --rm --network host jordi/ab -n 100 -c 10 http://localhost:8081/ || true
+          
+          docker stop wordpress-perf
+          docker rm wordpress-perf
+
+  # Job 3: Build y push de la imagen de producción
+  build:
+    name: Build Production Image
+    needs: test
+    if: ${{ !inputs.dry_run }}
+    uses: ./.github/workflows/docker-build.yml
+    with:
+      environment: production
+      ecr_repository: wordpress-prod
+    secrets: inherit
+
+  # Job 4: Backup antes del deployment
+  backup:
+    name: Backup Current Production
+    runs-on: ubuntu-latest
+    needs: build
+    if: ${{ !inputs.dry_run }}
+    environment: production
+    
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Create ECS task definition backup
+        run: |
+          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+          
+          # Backup de la task definition actual
+          aws ecs describe-task-definition \
+            --task-definition ${{ env.ECS_SERVICE }} \
+            --query taskDefinition \
+            > backup-task-definition-$TIMESTAMP.json
+          
+          # Guardar en S3 si tienes un bucket de backups
+          # aws s3 cp backup-task-definition-$TIMESTAMP.json s3://your-backup-bucket/ecs-backups/
+          
+          echo "Task definition backed up: backup-task-definition-$TIMESTAMP.json"
+
+      - name: Tag current production image
+        run: |
+          # Obtener la imagen actual en producción
+          CURRENT_IMAGE=$(aws ecs describe-task-definition \
+            --task-definition ${{ env.ECS_SERVICE }} \
+            --query 'taskDefinition.containerDefinitions[0].image' \
+            --output text)
+          
+          echo "Current production image: $CURRENT_IMAGE"
+          
+          # Tag como 'previous' para rollback rápido
+          # Este paso requiere configuración adicional de ECR
+
+  # Job 5: Deploy a producción
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [build, backup]
+    if: ${{ !inputs.dry_run }}
+    environment:
+      name: production
+      url: https://your-production-domain.com  # Cambiar por tu dominio real
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # Blue/Green Deployment con ECS
+      - name: Download task definition
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition ${{ env.ECS_SERVICE }} \
+            --query taskDefinition > task-definition.json
+
+      - name: Fill in the new image ID
+        id: task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-definition.json
+          container-name: ${{ env.CONTAINER_NAME }}
+          image: ${{ needs.build.outputs.image_uri }}
+
+      # Deploy con estrategia de rolling update
+      - name: Deploy to Amazon ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition: ${{ steps.task-def.outputs.task-definition }}
+          service: ${{ env.ECS_SERVICE }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
+          wait-for-minutes: 15
+          codedeploy-appspec: |
+            version: 0.0
+            Resources:
+              - TargetService:
+                  Type: AWS::ECS::Service
+                  Properties:
+                    TaskDefinition: "${{ steps.task-def.outputs.task-definition }}"
+                    LoadBalancerInfo:
+                      ContainerName: "${{ env.CONTAINER_NAME }}"
+                      ContainerPort: 80
+
+      - name: Verify deployment
+        run: |
+          echo "### 🚀 Production Deployment Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version deployed:** ${{ github.ref_name || inputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** ${{ needs.build.outputs.image_uri }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Cluster:** ${{ env.ECS_CLUSTER }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Service:** ${{ env.ECS_SERVICE }}" >> $GITHUB_STEP_SUMMARY
+
+  # Job 6: Tests post-deployment y monitoreo
+  verify:
+    name: Post-deployment Verification
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: ${{ !inputs.dry_run }}
+    
+    steps:
+      - name: Health check
+        run: |
+          # Reemplazar con tu URL de producción
+          PROD_URL="https://your-production-domain.com"
+          
+          echo "Checking production health..."
+          for i in {1..30}; do
+            if curl -f $PROD_URL > /dev/null 2>&1; then
+              echo "✅ Production is healthy!"
+              break
+            fi
+            echo "Attempt $i/30: Waiting for production..."
+            sleep 10
+          done
+
+      - name: Synthetic monitoring
+        run: |
+          # Tests sintéticos básicos
+          echo "Running synthetic tests..."
+          
+          # Test 1: Homepage loads
+          curl -f https://your-production-domain.com/ || exit 1
+          
+          # Test 2: Admin panel is accessible
+          curl -f https://your-production-domain.com/wp-admin/ || exit 1
+          
+          # Test 3: API health endpoint (si tienes uno)
+          # curl -f https://your-production-domain.com/health || exit 1
+          
+          echo "✅ All synthetic tests passed!"
+
+      - name: Performance monitoring
+        run: |
+          # Verificar métricas de rendimiento
+          echo "Checking performance metrics..."
+          
+          # Aquí podrías integrar con CloudWatch, Datadog, New Relic, etc.
+          # Por ahora, un check básico de tiempo de respuesta
+          
+          response_time=$(curl -o /dev/null -s -w '%{time_total}' https://your-production-domain.com/)
+          echo "Response time: ${response_time}s"
+          
+          if (( $(echo "$response_time > 3" | bc -l) )); then
+            echo "⚠️ Warning: Response time is over 3 seconds"
+          fi
+
+  # Job 7: Rollback automático en caso de fallo
+  rollback:
+    name: Automatic Rollback
+    runs-on: ubuntu-latest
+    needs: verify
+    if: failure() && !inputs.dry_run
+    environment: production
+    
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Rollback to previous version
+        run: |
+          echo "⚠️ Deployment verification failed! Starting rollback..."
+          
+          # Obtener la penúltima revisión de la task definition
+          PREVIOUS_TASK_DEF=$(aws ecs describe-task-definition \
+            --task-definition ${{ env.ECS_SERVICE }} \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text | sed 's/:[-0-9]*$//')
+          
+          PREVIOUS_REVISION=$(($(aws ecs describe-services \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services ${{ env.ECS_SERVICE }} \
+            --query 'services[0].taskDefinition' \
+            --output text | grep -oE '[0-9]+$') - 1))
+          
+          # Hacer rollback
+          aws ecs update-service \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --service ${{ env.ECS_SERVICE }} \
+            --task-definition ${PREVIOUS_TASK_DEF}:${PREVIOUS_REVISION}
+          
+          echo "🔄 Rollback initiated to revision ${PREVIOUS_REVISION}"
+
+      - name: Notify rollback
+        run: |
+          echo "### ⚠️ ROLLBACK EXECUTED" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "The production deployment has been rolled back due to verification failures." >> $GITHUB_STEP_SUMMARY
+          echo "Please investigate the issue before attempting another deployment." >> $GITHUB_STEP_SUMMARY

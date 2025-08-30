@@ -11,7 +11,7 @@ FROM wordpress:6.4.3-php8.2-apache
 # Copiamos un archivo .ini personalizado para aumentar límites comunes,
 # como el tamaño máximo de subida de archivos.
 # Esto es útil para subir temas, plugins o multimedia de gran tamaño.
-COPY wordpress/uploads.ini /usr/local/etc/php/conf.d/uploads.ini
+COPY ./src/config/uploads.ini /usr/local/etc/php/conf.d/uploads.ini
 
 # =============================================================================
 # PASO 3: Instalar plugins y temas personalizados

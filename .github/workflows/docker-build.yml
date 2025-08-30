@@ -1,0 +1,150 @@
+name: Docker Build and Push
+
+# Workflow reutilizable para construcción de imágenes Docker
+on:
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+        description: 'Environment name (development or production)'
+      ecr_repository:
+        required: true
+        type: string
+        description: 'ECR repository name'
+      push_image:
+        required: false
+        type: boolean
+        default: true
+        description: 'Whether to push the image to ECR'
+    outputs:
+      image_tag:
+        description: 'The Docker image tag that was built'
+        value: ${{ jobs.build.outputs.image_tag }}
+      image_uri:
+        description: 'The full ECR image URI'
+        value: ${{ jobs.build.outputs.image_uri }}
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  build:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tags }}
+      image_uri: ${{ steps.build.outputs.image_uri }}
+    
+    steps:
+      # 1. Checkout del código
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Necesario para obtener todos los tags
+
+      # 2. Configurar AWS CLI
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # 3. Login a ECR
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-public/ecr-login@v2
+        with:
+          registry-type: private
+
+      # 4. Configurar Docker Buildx (para cache y builds multi-plataforma)
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # 5. Generar metadata y tags
+      - name: Generate Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ steps.login-ecr.outputs.registry }}/${{ inputs.ecr_repository }}
+          tags: |
+            # Para desarrollo: dev-SHA-corto y dev-latest
+            type=raw,value=dev-{{sha}},enable=${{ inputs.environment == 'development' }}
+            type=raw,value=dev-latest,enable=${{ inputs.environment == 'development' }}
+            # Para producción: semver tags y latest
+            type=ref,event=tag,enable=${{ inputs.environment == 'production' }}
+            type=semver,pattern={{version}},enable=${{ inputs.environment == 'production' }}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ inputs.environment == 'production' }}
+            type=raw,value=latest,enable=${{ inputs.environment == 'production' && startsWith(github.ref, 'refs/tags/') }}
+            # Tag con fecha para ambos entornos
+            type=raw,value=${{ inputs.environment }}-{{date 'YYYYMMDD-HHmmss'}}
+
+      # 6. Escaneo de seguridad del Dockerfile
+      - name: Run Hadolint
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: ./app/Dockerfile
+          format: sarif
+          output-file: hadolint-results.sarif
+          no-fail: true
+
+      # 7. Upload de resultados de Hadolint a GitHub Security
+      - name: Upload Hadolint results
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: hadolint-results.sarif
+
+      # 8. Build y Push de la imagen Docker
+      - name: Build and push Docker image
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: ./app
+          file: ./app/Dockerfile
+          platforms: linux/amd64
+          push: ${{ inputs.push_image }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            BUILD_DATE=${{ github.event.head_commit.timestamp }}
+            VCS_REF=${{ github.sha }}
+            VERSION=${{ steps.meta.outputs.version }}
+
+      # 9. Escaneo de vulnerabilidades con Trivy
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ steps.login-ecr.outputs.registry }}/${{ inputs.ecr_repository }}:${{ inputs.environment }}-${{ github.sha }}
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'  # No fallar el build, solo reportar
+
+      # 10. Upload de resultados de Trivy a GitHub Security
+      - name: Upload Trivy results to GitHub Security
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+      # 11. Generar reporte de la imagen construida
+      - name: Image digest and summary
+        run: |
+          echo "### 🐳 Docker Image Built Successfully" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Image URI:** \`${{ steps.login-ecr.outputs.registry }}/${{ inputs.ecr_repository }}:${{ inputs.environment }}-${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Environment:** ${{ inputs.environment }}" >> $GITHUB_STEP_SUMMARY
+          echo "**SHA:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Tags:** ${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
+
+      # Output de la URI de la imagen
+      - name: Set image URI output
+        id: set-output
+        run: |
+          echo "image_uri=${{ steps.login-ecr.outputs.registry }}/${{ inputs.ecr_repository }}:${{ inputs.environment }}-${{ github.sha }}" >> $GITHUB_OUTPUT
