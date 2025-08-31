@@ -67,12 +67,6 @@ variable "db_password" {
 }
 
 # ECS variables
-variable "wordpress_image" {
-  description = "WordPress Docker image"
-  type        = string
-  default     = "wordpress:latest"
-}
-
 variable "ecs_desired_count" {
   description = "Desired number of ECS tasks"
   type        = number
@@ -99,10 +93,4 @@ variable "ecs_memory" {
     condition     = var.ecs_memory >= 512 && var.ecs_memory <= 30720
     error_message = "ECS memory must be between 512 MB and 30720 MB."
   }
-}
-
-variable "repository_url" {
-  description = "url of the ECR repository"
-  type        = string
-  default     = ""
 }

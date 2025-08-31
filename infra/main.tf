@@ -83,11 +83,10 @@ module "ecs" {
   security_group_ids  = [module.vpc.ecs_security_group_id]     # Grupos de seguridad para contenedores
 
   # Configuración específica de WordPress
-  wordpress_image = var.wordpress_image    # Imagen Docker de WordPress a usar
-  db_host         = module.rds.db_endpoint # Endpoint de la base de datos RDS
-  db_name         = var.db_name            # Nombre de la base de datos
-  db_username     = var.db_username        # Usuario de la base de datos
-  db_password     = var.db_password        # Contraseña de la base de datos
+  db_host     = module.rds.db_endpoint # Endpoint de la base de datos RDS
+  db_name     = var.db_name            # Nombre de la base de datos
+  db_username = var.db_username        # Usuario de la base de datos
+  db_password = var.db_password        # Contraseña de la base de datos
 
   # Configuración de recursos para contenedores ECS
   desired_count = var.ecs_desired_count # Número deseado de contenedores ejecutándose

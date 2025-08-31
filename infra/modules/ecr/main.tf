@@ -28,16 +28,15 @@ resource "aws_ecr_lifecycle_policy" "main" {
   policy = jsonencode({
     rules = [
       {
-        rulePriority = 1                    # Prioridad de la regla (1 = más alta)
-        description  = "Keep last 10 images" # Descripción de lo que hace
+        rulePriority = 1                        # Prioridad de la regla
+        description  = "Keep last 10 images"    # Mantener las últimas 10 imágenes
         selection = {
-          tagStatus     = "any"             # aplicar imagenes con cualquier tag
-          tagPrefixList = ["v"]             # Solo a etiquetas que empiecen con "v" (ej: v1.0, v2.1)
-          countType     = "imageCountMoreThan"  # Tipo de conteo: más de X imágenes
-          countNumber   = 10                # Mantener solo las últimas 10 imágenes
+          tagStatus   = "any"                   # Aplicar a cualquier imagen (con o sin tag)
+          countType   = "imageCountMoreThan"    # Tipo de conteo: más de X imágenes
+          countNumber = 10                      # Mantener solo las últimas 10 imágenes
         }
         action = {
-          type = "expire"                   # Acción: eliminar las imágenes que cumplan los criterios
+          type = "expire"                       # Acción: eliminar las que excedan el límite
         }
       }
     ]
