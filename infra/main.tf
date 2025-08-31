@@ -24,7 +24,7 @@ provider "aws" {
 # MÓDULOS DE INFRAESTRUCTURA - ORDEN DE DESPLIEGUE IMPORTANTE
 # =============================================================================
 
-# 1. VPC (Virtual Private Cloud) - La red virtual privada que aísla nuestra infraestructura
+# VPC (Virtual Private Cloud) - La red virtual privada que aísla nuestra infraestructura
 # Crea la red, subredes públicas/privadas, gateways de internet y NAT
 module "vpc" {
   source = "./modules/vpc"
@@ -34,14 +34,14 @@ module "vpc" {
   availability_zones = var.availability_zones # Zonas de disponibilidad para alta disponibilidad
 }
 
-# 2. IAM (Identity and Access Management) - Roles y permisos para servicios de AWS
+# IAM (Identity and Access Management) - Roles y permisos para servicios de AWS
 # Define qué servicios pueden acceder a qué recursos de forma segura
 module "iam" {
   source      = "./modules/iam"
   environment = var.environment # Entorno para nombrar los roles
 }
 
-# 3. RDS (Relational Database Service) - Base de datos MySQL gestionada para WordPress
+# RDS (Relational Database Service) - Base de datos MySQL gestionada para WordPress
 # Proporciona una base de datos MySQL con backups automáticos y alta disponibilidad
 module "rds" {
   source                 = "./modules/rds"
@@ -55,7 +55,7 @@ module "rds" {
   vpc_security_group_ids = [module.vpc.rds_security_group_id] # Grupos de seguridad (firewall)
 }
 
-# 4. ALB (Application Load Balancer) - Balanceador de carga para distribuir tráfico
+# ALB (Application Load Balancer) - Balanceador de carga para distribuir tráfico
 # Distribuye el tráfico web entre múltiples contenedores y proporciona alta disponibilidad
 module "alb" {
   source                 = "./modules/alb"
@@ -65,7 +65,12 @@ module "alb" {
   vpc_security_group_ids = [module.vpc.alb_security_group_id] # Grupos de seguridad para el ALB
 }
 
-# 5. ECS (Elastic Container Service) - Servicio de contenedores para ejecutar WordPress
+module "ecr" {
+  source      = "./modules/ecr"
+  environment = var.environment # Entorno para nombrar recursos
+}
+
+# ECS (Elastic Container Service) - Servicio de contenedores para ejecutar WordPress
 # Ejecuta WordPress en contenedores Docker con escalado automático
 module "ecs" {
   source              = "./modules/ecs"
@@ -88,4 +93,7 @@ module "ecs" {
   desired_count = var.ecs_desired_count # Número deseado de contenedores ejecutándose
   cpu           = var.ecs_cpu           # CPU asignada a cada contenedor (en unidades)
   memory        = var.ecs_memory        # Memoria RAM asignada (en MB)
+
+  # Registro ECR
+  repo_name = module.ecr.repo_name # Nombre del repositorio ECR donde está la
 }

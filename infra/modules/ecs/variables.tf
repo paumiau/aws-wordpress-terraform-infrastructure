@@ -73,3 +73,8 @@ variable "memory" {
   description = "Memory for ECS tasks"
   type        = number
 }
+
+variable "repo_name" {
+  description = "Name of the AWS ECR image repository"
+  type        = string
+}
