@@ -1,44 +1,41 @@
 # =============================================================================
-# ECR (ELASTIC CONTAINER REGISTRY) - SERVICIO DE REGISTRO DE AWS
+# ECR (Elastic Container Registry)
 # =============================================================================
-# ECR permite guardar tus builds de contenedores Docker de forma segura.
-# =============================================================================
+# ECR es el servicio de AWS para almacenar imágenes Docker de forma privada.
+# Similar a Docker Hub, pero dentro de tu cuenta AWS.
 
-# Repositorio ECR para las imágenes de WordPress
+# Repositorio donde se guardarán las imágenes Docker de WordPress
 resource "aws_ecr_repository" "main" {
-  name                 = "${var.environment}-wordpress"  # Nombre del repositorio de imágenes
-  image_tag_mutability = "MUTABLE"                        # Permite sobrescribir tags existentes (ej: latest)
+  name                 = "${var.environment}-wordpress"
+  image_tag_mutability = "MUTABLE" # Permite actualizar tags como 'latest'
 
-  # Configuración de escaneo de seguridad
+  # Escaneo automático de vulnerabilidades
   image_scanning_configuration {
-    scan_on_push = true  # Escanear automáticamente cada imagen que se sube en busca de vulnerabilidades
+    scan_on_push = true
   }
 
   tags = {
-    Name = "${var.environment}-wordpress-ecr"
+    Name        = "${var.environment}-wordpress-ecr"
+    Environment = var.environment
   }
 }
 
-# Política de ciclo de vida: limpia automáticamente imágenes viejas para ahorrar espacio y costos
-# Es como un "limpiador automático" que borra imágenes antiguas
+# Política de limpieza automática - Mantiene solo las últimas 10 imágenes
 resource "aws_ecr_lifecycle_policy" "main" {
-  repository = aws_ecr_repository.main.name  # Aplicar a qué repositorio
+  repository = aws_ecr_repository.main.name
 
-  # Configuración en formato JSON que define las reglas de limpieza
   policy = jsonencode({
-    rules = [
-      {
-        rulePriority = 1                        # Prioridad de la regla
-        description  = "Keep last 10 images"    # Mantener las últimas 10 imágenes
-        selection = {
-          tagStatus   = "any"                   # Aplicar a cualquier imagen (con o sin tag)
-          countType   = "imageCountMoreThan"    # Tipo de conteo: más de X imágenes
-          countNumber = 10                      # Mantener solo las últimas 10 imágenes
-        }
-        action = {
-          type = "expire"                       # Acción: eliminar las que excedan el límite
-        }
+    rules = [{
+      rulePriority = 1
+      description  = "Keep last 10 images"
+      selection = {
+        tagStatus   = "any"
+        countType   = "imageCountMoreThan"
+        countNumber = 10
       }
-    ]
+      action = {
+        type = "expire"
+      }
+    }]
   })
 }
