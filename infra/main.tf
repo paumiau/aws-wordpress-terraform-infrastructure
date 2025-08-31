@@ -1,98 +1,97 @@
 # =============================================================================
-# CONFIGURACIÓN PRINCIPAL DE TERRAFORM PARA WORDPRESS EN AWS
+# WordPress en AWS con Terraform
 # =============================================================================
-# Este archivo orquesta todos los servicios necesarios para desplegar WordPress
-# en AWS usando una arquitectura de alta disponibilidad con contenedores
-# =============================================================================
-# NOTA: La configuración de Terraform y versiones está en terraform.tf
+# Arquitectura: VPC → RDS (MySQL) → ECR (Docker) → ECS (Fargate) → ALB
+# 
+# Flujo de despliegue:
+# 1. Crear la red (VPC)
+# 2. Crear roles IAM
+# 3. Crear base de datos (RDS)
+# 4. Crear balanceador (ALB)
+# 5. Crear registro de imágenes (ECR)
+# 6. Desplegar contenedores (ECS)
 
-# Configuración del proveedor de AWS: especifica región y etiquetas por defecto
+# Proveedor AWS
 provider "aws" {
-  region = var.aws_region # Región de AWS donde se desplegará la infraestructura
+  region = var.aws_region
 
-  # Etiquetas aplicadas automáticamente a todos los recursos creados
   default_tags {
     tags = {
-      Environment = var.environment            # Entorno (dev, staging, prod)
-      Project     = "wordpress-infrastructure" # Nombre del proyecto
-      ManagedBy   = "terraform"                # Indica que es gestionado por Terraform
+      Environment = var.environment
+      Project     = "wordpress"
+      ManagedBy   = "terraform"
     }
   }
 }
 
-# =============================================================================
-# MÓDULOS DE INFRAESTRUCTURA - ORDEN DE DESPLIEGUE IMPORTANTE
-# =============================================================================
-
-# VPC (Virtual Private Cloud) - La red virtual privada que aísla nuestra infraestructura
-# Crea la red, subredes públicas/privadas, gateways de internet y NAT
+# 1. VPC - Red privada virtual
 module "vpc" {
   source = "./modules/vpc"
 
-  environment        = var.environment        # Entorno para nombrar recursos
-  vpc_cidr           = var.vpc_cidr           # Rango de IPs de la red (ej: 10.0.0.0/16)
-  availability_zones = var.availability_zones # Zonas de disponibilidad para alta disponibilidad
+  environment        = var.environment
+  vpc_cidr           = var.vpc_cidr
+  availability_zones = var.availability_zones
 }
 
-# IAM (Identity and Access Management) - Roles y permisos para servicios de AWS
-# Define qué servicios pueden acceder a qué recursos de forma segura
+# 2. IAM - Roles y permisos
 module "iam" {
   source      = "./modules/iam"
-  environment = var.environment # Entorno para nombrar los roles
+  environment = var.environment
 }
 
-# RDS (Relational Database Service) - Base de datos MySQL gestionada para WordPress
-# Proporciona una base de datos MySQL con backups automáticos y alta disponibilidad
+# 3. RDS - Base de datos MySQL
 module "rds" {
-  source                 = "./modules/rds"
-  environment            = var.environment                    # Entorno para nombrar recursos
-  vpc_id                 = module.vpc.vpc_id                  # ID de la VPC donde crear la BD
-  private_subnet_ids     = module.vpc.private_subnet_ids      # Subredes privadas para la BD
-  db_instance_class      = var.db_instance_class              # Tamaño de la instancia (ej: db.t3.micro)
-  db_name                = var.db_name                        # Nombre de la base de datos
-  db_username            = var.db_username                    # Usuario administrador de la BD
-  db_password            = var.db_password                    # Contraseña del administrador
-  vpc_security_group_ids = [module.vpc.rds_security_group_id] # Grupos de seguridad (firewall)
+  source = "./modules/rds"
+
+  environment            = var.environment
+  vpc_id                 = module.vpc.vpc_id
+  private_subnet_ids     = module.vpc.private_subnet_ids
+  vpc_security_group_ids = [module.vpc.rds_security_group_id]
+
+  db_instance_class = var.db_instance_class
+  db_name           = var.db_name
+  db_username       = var.db_username
+  db_password       = var.db_password
 }
 
-# ALB (Application Load Balancer) - Balanceador de carga para distribuir tráfico
-# Distribuye el tráfico web entre múltiples contenedores y proporciona alta disponibilidad
+# 4. ALB - Balanceador de carga
 module "alb" {
-  source                 = "./modules/alb"
-  environment            = var.environment                    # Entorno para nombrar recursos
-  vpc_id                 = module.vpc.vpc_id                  # ID de la VPC donde crear el ALB
-  public_subnet_ids      = module.vpc.public_subnet_ids       # Subredes públicas para recibir tráfico
-  vpc_security_group_ids = [module.vpc.alb_security_group_id] # Grupos de seguridad para el ALB
+  source = "./modules/alb"
+
+  environment            = var.environment
+  vpc_id                 = module.vpc.vpc_id
+  public_subnet_ids      = module.vpc.public_subnet_ids
+  vpc_security_group_ids = [module.vpc.alb_security_group_id]
 }
 
+# 5. ECR - Registro de imágenes Docker
 module "ecr" {
   source      = "./modules/ecr"
-  environment = var.environment # Entorno para nombrar recursos
+  environment = var.environment
 }
 
-# ECS (Elastic Container Service) - Servicio de contenedores para ejecutar WordPress
-# Ejecuta WordPress en contenedores Docker con escalado automático
+# 6. ECS - Servicio de contenedores
 module "ecs" {
-  source              = "./modules/ecs"
-  environment         = var.environment                        # Entorno para nombrar recursos
-  vpc_id              = module.vpc.vpc_id                      # ID de la VPC
-  private_subnet_ids  = module.vpc.private_subnet_ids          # Subredes privadas para contenedores
-  target_group_arn    = module.alb.target_group_arn            # Grupo objetivo del balanceador
-  task_execution_role = module.iam.ecs_task_execution_role_arn # Rol para ejecutar tareas ECS
-  task_role           = module.iam.ecs_task_role_arn           # Rol para las tareas en ejecución
-  security_group_ids  = [module.vpc.ecs_security_group_id]     # Grupos de seguridad para contenedores
+  source = "./modules/ecs"
 
-  # Configuración específica de WordPress
-  db_host     = module.rds.db_endpoint # Endpoint de la base de datos RDS
-  db_name     = var.db_name            # Nombre de la base de datos
-  db_username = var.db_username        # Usuario de la base de datos
-  db_password = var.db_password        # Contraseña de la base de datos
+  environment        = var.environment
+  private_subnet_ids = module.vpc.private_subnet_ids
+  security_group_ids = [module.vpc.ecs_security_group_id]
 
-  # Configuración de recursos para contenedores ECS
-  desired_count = var.ecs_desired_count # Número deseado de contenedores ejecutándose
-  cpu           = var.ecs_cpu           # CPU asignada a cada contenedor (en unidades)
-  memory        = var.ecs_memory        # Memoria RAM asignada (en MB)
+  # Integraciones
+  repository_url      = module.ecr.repository_url
+  target_group_arn    = module.alb.target_group_arn
+  task_execution_role = module.iam.ecs_task_execution_role_arn
+  task_role           = module.iam.ecs_task_role_arn
 
-  # Registro ECR
-  repository_url = module.ecr.repository_url # URL completa del repositorio ECR
+  # Base de datos
+  db_host     = module.rds.db_endpoint
+  db_name     = var.db_name
+  db_username = var.db_username
+  db_password = var.db_password
+
+  # Configuración de contenedores
+  desired_count = var.ecs_desired_count
+  cpu           = var.ecs_cpu
+  memory        = var.ecs_memory
 }

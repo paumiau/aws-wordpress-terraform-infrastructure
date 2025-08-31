@@ -31,11 +31,10 @@ module "wordpress_infrastructure" {
   db_username       = "admin"
   db_password       = var.db_password # Esta sí necesita ser variable para seguridad
 
-  # Configuración de WordPress/ECS - más recursos para producción
-  wordpress_image   = "wordpress:6.4" # Versión específica para producción
-  ecs_desired_count = 3               # Más instancias para alta disponibilidad
-  ecs_cpu           = 512             # Más CPU
-  ecs_memory        = 1024            # Más memoria
+  # Configuración de ECS - más recursos para producción
+  ecs_desired_count = 3    # Más instancias para alta disponibilidad
+  ecs_cpu           = 512  # Más CPU
+  ecs_memory        = 1024 # Más memoria
 }
 
 # Variable para la contraseña de la base de datos
