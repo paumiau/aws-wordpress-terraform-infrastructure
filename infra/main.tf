@@ -47,7 +47,7 @@ module "rds" {
   vpc_id                 = module.vpc.vpc_id
   private_subnet_ids     = module.vpc.private_subnet_ids
   vpc_security_group_ids = [module.vpc.rds_security_group_id]
-  
+
   db_instance_class = var.db_instance_class
   db_name           = var.db_name
   db_username       = var.db_username
@@ -77,19 +77,19 @@ module "ecs" {
   environment        = var.environment
   private_subnet_ids = module.vpc.private_subnet_ids
   security_group_ids = [module.vpc.ecs_security_group_id]
-  
+
   # Integraciones
   repository_url      = module.ecr.repository_url
   target_group_arn    = module.alb.target_group_arn
   task_execution_role = module.iam.ecs_task_execution_role_arn
   task_role           = module.iam.ecs_task_role_arn
-  
+
   # Base de datos
   db_host     = module.rds.db_endpoint
   db_name     = var.db_name
   db_username = var.db_username
   db_password = var.db_password
-  
+
   # Configuración de contenedores
   desired_count = var.ecs_desired_count
   cpu           = var.ecs_cpu

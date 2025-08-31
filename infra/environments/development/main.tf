@@ -31,8 +31,7 @@ module "wordpress_infrastructure" {
   db_username       = "admin"
   db_password       = var.db_password # Esta sí necesita ser variable por seguridad
 
-  # Configuración de WordPress/ECS
-  wordpress_image   = "wordpress:latest"
+  # Configuración de ECS
   ecs_desired_count = 1
   ecs_cpu           = 256
   ecs_memory        = 512

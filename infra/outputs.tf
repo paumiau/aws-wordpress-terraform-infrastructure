@@ -45,7 +45,7 @@ output "ecr_repository_name" {
 # Comandos útiles para el despliegue
 output "deployment_commands" {
   description = "Useful commands for deployment"
-  value = <<-EOT
+  value       = <<-EOT
     
     ========== Docker Commands ==========
     # 1. Login to ECR:
