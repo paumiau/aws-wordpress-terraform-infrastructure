@@ -1,47 +1,45 @@
+# Variables básicas
 variable "environment" {
-  description = "Environment name"
+  description = "Environment name (development/staging/production)"
   type        = string
 }
 
-variable "vpc_id" {
-  description = "VPC ID"
-  type        = string
-}
-
+# Variables de red
 variable "private_subnet_ids" {
-  description = "Private subnet IDs"
+  description = "Private subnet IDs where containers will run"
   type        = list(string)
 }
 
 variable "security_group_ids" {
-  description = "Security group IDs"
+  description = "Security group IDs for containers"
   type        = list(string)
 }
 
+# Variables de integración
 variable "target_group_arn" {
-  description = "Target group ARN"
+  description = "ALB target group ARN"
   type        = string
 }
 
+variable "repository_url" {
+  description = "ECR repository URL"
+  type        = string
+}
+
+# Variables IAM
 variable "task_execution_role" {
-  description = "ECS task execution role ARN"
+  description = "IAM role ARN for ECS task execution"
   type        = string
 }
 
 variable "task_role" {
-  description = "ECS task role ARN"
+  description = "IAM role ARN for running tasks"
   type        = string
 }
 
-
-variable "image_tag" {
-  description = "Docker image tag to deploy"
-  type        = string
-  default     = "latest"
-}
-
+# Variables de base de datos
 variable "db_host" {
-  description = "Database host"
+  description = "Database endpoint"
   type        = string
 }
 
@@ -61,22 +59,27 @@ variable "db_password" {
   sensitive   = true
 }
 
+# Variables de configuración de contenedores
 variable "desired_count" {
-  description = "Desired number of ECS tasks"
+  description = "Number of containers to run"
   type        = number
+  default     = 2
 }
 
 variable "cpu" {
-  description = "CPU units for ECS tasks"
+  description = "CPU units (256, 512, 1024, 2048, 4096)"
   type        = number
+  default     = 256
 }
 
 variable "memory" {
-  description = "Memory for ECS tasks"
+  description = "Memory in MB"
   type        = number
+  default     = 512
 }
 
-variable "repository_url" {
-  description = "URL of the ECR repository (e.g., 123456789.dkr.ecr.us-east-1.amazonaws.com/my-app)"
+variable "image_tag" {
+  description = "Docker image tag"
   type        = string
+  default     = "latest"
 }
