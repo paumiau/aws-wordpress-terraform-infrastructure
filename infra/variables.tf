@@ -100,3 +100,9 @@ variable "ecs_memory" {
     error_message = "ECS memory must be between 512 MB and 30720 MB."
   }
 }
+
+variable "repository_url" {
+  description = "url of the ECR repository"
+  type        = string
+  default     = ""
+}

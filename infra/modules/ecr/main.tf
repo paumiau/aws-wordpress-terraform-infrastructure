@@ -22,7 +22,7 @@ resource "aws_ecr_repository" "main" {
 # Política de ciclo de vida: limpia automáticamente imágenes viejas para ahorrar espacio y costos
 # Es como un "limpiador automático" que borra imágenes antiguas
 resource "aws_ecr_lifecycle_policy" "main" {
-  repository = "aws_ecr_repository.name"  # Aplicar a qué repositorio
+  repository = aws_ecr_repository.main.name  # Aplicar a qué repositorio
 
   # Configuración en formato JSON que define las reglas de limpieza
   policy = jsonencode({
@@ -31,7 +31,7 @@ resource "aws_ecr_lifecycle_policy" "main" {
         rulePriority = 1                    # Prioridad de la regla (1 = más alta)
         description  = "Keep last 10 images" # Descripción de lo que hace
         selection = {
-          tagStatus     = "tagged"          # Solo aplicar a imágenes con etiquetas
+          tagStatus     = "any"             # aplicar imagenes con cualquier tag
           tagPrefixList = ["v"]             # Solo a etiquetas que empiecen con "v" (ej: v1.0, v2.1)
           countType     = "imageCountMoreThan"  # Tipo de conteo: más de X imágenes
           countNumber   = 10                # Mantener solo las últimas 10 imágenes

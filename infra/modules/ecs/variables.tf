@@ -33,9 +33,11 @@ variable "task_role" {
   type        = string
 }
 
-variable "wordpress_image" {
-  description = "WordPress Docker image"
+
+variable "image_tag" {
+  description = "Docker image tag to deploy"
   type        = string
+  default     = "latest"
 }
 
 variable "db_host" {
@@ -74,7 +76,7 @@ variable "memory" {
   type        = number
 }
 
-variable "repo_name" {
-  description = "Name of the AWS ECR image repository"
+variable "repository_url" {
+  description = "URL of the ECR repository (e.g., 123456789.dkr.ecr.us-east-1.amazonaws.com/my-app)"
   type        = string
 }

@@ -81,7 +81,7 @@ resource "aws_ecs_task_definition" "main" {
   container_definitions = jsonencode([
     {
       name      = "wordpress"         # Nombre del contenedor
-      image     = "${var.repo_name}" # Imagen Docker a usar (ej: wordpress:latest)
+      image = "${var.repository_url}:${var.image_tag}" # Imagen Docker del repo a  usar
       essential = true                # Si este contenedor falla, toda la tarea falla
 
       # CONFIGURACIÓN DE PUERTOS - Cómo exponer el contenedor

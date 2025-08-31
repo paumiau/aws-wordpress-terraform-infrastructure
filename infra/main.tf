@@ -95,5 +95,5 @@ module "ecs" {
   memory        = var.ecs_memory        # Memoria RAM asignada (en MB)
 
   # Registro ECR
-  repo_name = module.ecr.repo_name # Nombre del repositorio ECR donde está la
+  repository_url = module.ecr.repository_url # URL completa del repositorio ECR
 }
